@@ -88,7 +88,18 @@ section h2 button,.linkbtn{border:0;background:none;color:var(--acc);font-size:1
 
 /* bars */
 .bars{display:flex;flex-direction:column;gap:11px}
-.bar .top{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.bar{display:block;width:100%;border:0;background:none;padding:6px 8px;margin:-6px -8px;width:calc(100% + 16px);text-align:left;border-radius:10px;color:inherit}
+.bar:active{background:var(--chip)}
+.bar .top{display:flex;justify-content:space-between;gap:10px;font-size:14px;align-items:center}
+.bar .top .nm{min-width:0;overflow-wrap:anywhere}
+.bar .top .num{display:flex;align-items:center;gap:2px;white-space:nowrap}
+.bar .chev{width:16px;height:16px;color:var(--muted);margin-right:-4px}
+.catsum{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.catsum>div{background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.catsum .v{font-family:var(--mono);font-weight:700;font-size:19px;font-variant-numeric:tabular-nums}
+.catsum .v.in{color:var(--in)} .catsum .v.out{color:var(--out)}
+.catsum .sub{font-size:12px;color:var(--muted)}
+.months.mini{height:84px}.months.mini .pair{height:58px}
 .bar .top .num{font-size:13px}
 .bar .track{height:6px;background:var(--chip);border-radius:3px;margin-top:5px;overflow:hidden}
 .bar .fill{height:100%;border-radius:3px;background:var(--out)}

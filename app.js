@@ -178,11 +178,14 @@ function rowsHTML(txs){
     const net=arr.reduce((s,t)=>s+(t.type==="in"?t.dzd:t.type==="out"?-t.dzd:t.type==="move"?-(t.fee||0):0),0);
     return `<div><div class="day"><span>${dayLabel(d)}</span><span class="num">${da(net,true)}</span></div><div class="rows">${arr.map(txRow).join("")}</div></div>`}).join("");
 }
-function barsHTML(rows,total,cls){
+function barsHTML(rows,total,cls,type,txs){
   if(!rows.length)return`<p class="empty-note">Nothing yet this month.</p>`;
   const max=rows[0][1];
-  return `<div class="bars ${cls}">${rows.map(([k,v])=>`<div class="bar"><div class="top"><span>${esc(catOf(k)[1])}<span class="pct">${Math.round(v/total*100)}%</span></span><span class="num">${grp(v)} DA</span></div><div class="track"><div class="fill" style="width:${Math.max(2,v/max*100)}%"></div></div></div>`).join("")}</div>`;
+  const count=k=>txs?txs.filter(t=>k==="fees"?t.type==="move"&&t.fee:t.type===type&&t.cat===k).length:0;
+  return `<div class="bars ${cls}">${rows.map(([k,v])=>{const n=count(k);return `<button class="bar" data-catopen="${type}|${esc(k)}" aria-label="${esc(catOf(k)[1])}: ${grp(v)} DA, ${n} entries. Show them."><div class="top"><span class="nm">${esc(catOf(k)[1])}<span class="pct">${Math.round(v/total*100)}% · ${n}</span></span><span class="num">${grp(v)} DA<svg class="i chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span></div><div class="track"><div class="fill" style="width:${Math.max(2,v/max*100)}%"></div></div></button>`}).join("")}</div>`;
 }
+const inCat=(t,type,id)=>id==="fees"?t.type==="move"&&!!t.fee:t.type===type&&t.cat===id;
+const catAmt=(t,id)=>id==="fees"?(t.fee||0):t.dzd;
 function accountRows(all,S,pots){
   const rows=state.accounts.filter(a=>isPot(a)===pots&&(!a.hidden||Math.abs(S.b[a.id]||0)>0.005));
   if(!rows.length)return `<p class="empty-note">${pots?"No savings pot yet.":"No accounts."}</p>`;
@@ -218,8 +221,8 @@ function homeView(){
   h+=`<div class="mcard"><div class="row2"><div><div class="lbl">${mLabel(state.month)} · came in</div><div class="v in">${grp(T.i)} DA</div></div><div><div class="lbl">went out</div><div class="v out">${grp(T.o)} DA</div></div></div>
     <div class="iobar"><i style="width:${T.i/(T.i+T.o||1)*100}%;background:var(--in)"></i><i style="width:${T.o/(T.i+T.o||1)*100}%;background:var(--out)"></i></div>
     <div class="net"><span class="muted">Month result</span><span class="num" style="font-weight:700;color:${T.n<0?"var(--out)":"var(--in)"}">${da(T.n,true)}</span></div></div>`;
-  h+=`<section><h2>Where it went</h2><div class="panel">${barsHTML(byCat(mtx,"out"),T.o,"exp")}</div></section>
-  <section><h2>Where it came from</h2><div class="panel">${barsHTML(byCat(mtx,"in"),T.i,"inc")}</div></section>`;
+  h+=`<section><h2>Where it went</h2><div class="panel">${barsHTML(byCat(mtx,"out"),T.o,"exp","out",mtx)}</div></section>
+  <section><h2>Where it came from</h2><div class="panel">${barsHTML(byCat(mtx,"in"),T.i,"inc","in",mtx)}</div></section>`;
   const ms=[...Array(6)].map((_,k)=>shiftMonth(state.month,k-5)),vals=ms.map(m=>totals(all.filter(t=>t.date.startsWith(m))));
   const mx=Math.max(1,...vals.flatMap(v=>[v.i,v.o]));
   h+=`<section><h2>Last 6 months</h2><div class="panel"><div class="months">${ms.map((m,k)=>`<button class="mcol ${m===state.month?"cur":""}" data-month="${m}" aria-label="${mLabel(m)}: in ${grp(vals[k].i)} DA, out ${grp(vals[k].o)} DA"><div class="pair"><div class="b i" style="height:${vals[k].i/mx*100}%"></div><div class="b o" style="height:${vals[k].o/mx*100}%"></div></div><span>${mLabel(m,1)}</span></button>`).join("")}</div>
@@ -432,6 +435,44 @@ function openSheet(tx,preset){
   root.onkeydown=e=>{if(e.key==="Enter"&&e.target.id==="qcat"){e.preventDefault();root.querySelector("[data-qcat]").click()}};
 }
 
+/* ---------- category sheet ---------- */
+function openCategory(type,id){
+  const root=$("#sheetRoot");let scope="month",month=state.month;
+  const draw=()=>{
+    const all=list(),c=catOf(id),inc=type==="in";
+    const mine=all.filter(t=>inCat(t,type,id));
+    const shown=scope==="month"?mine.filter(t=>t.date.startsWith(month)):mine;
+    const sum=a=>a.reduce((s,t)=>s+catAmt(t,id),0);
+    const ms=[...Array(6)].map((_,k)=>shiftMonth(month,k-5)),vals=ms.map(m=>sum(mine.filter(t=>t.date.startsWith(m))));
+    const mx=Math.max(1,...vals),avg=vals.reduce((a,b)=>a+b,0)/6;
+    const MT=totals(all.filter(t=>t.date.startsWith(month))),monthTotal=inc?MT.i:MT.o;
+    const share=monthTotal?Math.round(sum(mine.filter(t=>t.date.startsWith(month)))/monthTotal*100):0;
+    const big=shown.length?shown.reduce((a,t)=>catAmt(t,id)>catAmt(a,id)?t:a):null;
+    root.innerHTML=`<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-label="${esc(c[1])}">
+      <div class="grab"></div>
+      <h3><span style="display:flex;align-items:center;gap:10px;min-width:0"><span class="mono ${inc?"in":"out"}" style="flex:none">${esc(c[2])}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c[1])}</span></span><button data-x>Close</button></h3>
+      <div class="seg">${[["month",mLabel(month)],["all","All time"]].map(([k,l])=>`<button data-cscope="${k}" aria-pressed="${scope===k}">${l}</button>`).join("")}</div>
+      <div class="catsum">
+        <div><span class="lbl">${scope==="month"?mLabel(month):"All time"}</span><span class="v ${inc?"in":"out"}">${grp(sum(shown))} DA</span><span class="sub">${shown.length} entr${shown.length===1?"y":"ies"}${scope==="month"&&share?` · ${share}% of ${inc?"income":"spending"}`:""}</span></div>
+        <div><span class="lbl">6-month average</span><span class="v">${grp(Math.round(avg))} DA</span><span class="sub">per month</span></div>
+      </div>
+      <div class="months mini">${ms.map((m,k)=>`<button class="mcol ${m===month&&scope==="month"?"cur":""}" data-cmonth="${m}" aria-label="${mLabel(m)}: ${grp(vals[k])} DA"><div class="pair"><div class="b ${inc?"i":"o"}" style="height:${vals[k]/mx*100}%;width:18px"></div></div><span>${mLabel(m,1)}</span></button>`).join("")}</div>
+      ${big&&shown.length>1?`<p class="hint">Biggest: ${grp(catAmt(big,id))} DA on ${dayLabel(big.date)}${big.note?" · "+esc(big.note):""}</p>`:""}
+      <section>${shown.length?rowsHTML(shown):`<p class="empty-note">Nothing in ${esc(c[1])} ${scope==="month"?"in "+mLabel(month):"yet"}.</p>`}</section>
+      ${state.demo?"":`<button class="btn ghost" data-caddnew>+ Add ${inc?"income":"expense"} in ${esc(c[1])}</button>`}
+    </div></div>`;
+  };
+  draw();root.oninput=null;root.onkeydown=null;
+  root.onclick=e=>{
+    if(e.target.id==="scrim"||e.target.closest("[data-x]")){root.innerHTML="";return}
+    const b=e.target.closest("button");if(!b||b.dataset.edit||b.dataset.debt)return;
+    if(b.dataset.cscope){scope=b.dataset.cscope;draw()}
+    else if(b.dataset.cmonth){month=b.dataset.cmonth;scope="month";draw()}
+    else if("caddnew" in b.dataset&&id!=="fees")openSheet(null,{type,cat:id});
+    else if("caddnew" in b.dataset)openSheet(null,{type:"move"});
+  };
+}
+
 /* ---------- debt sheet ---------- */
 function openDebt(id){
   const root=$("#sheetRoot");let confirmDel=false,amount="",date=today(),err="",pw=null,cancelK=-1;
@@ -568,7 +609,7 @@ function csv(){
 
 /* ---------- events ---------- */
 document.addEventListener("click",async e=>{
-  const sel="[data-v],[data-act],[data-edit],[data-debt],[data-acc],[data-month],[data-ftype],[data-fscope],[data-cattab],[data-cathide],[data-catshow],[data-theme-set],#mPrev,#mNext,#fab";
+  const sel="[data-v],[data-act],[data-edit],[data-debt],[data-acc],[data-catopen],[data-month],[data-ftype],[data-fscope],[data-cattab],[data-cathide],[data-catshow],[data-theme-set],#mPrev,#mNext,#fab";
   const b=e.target.closest(sel);if(!b)return;
   if(b.closest("#sheetRoot")&&!(b.dataset.edit||b.dataset.debt))return;
   if(b.id==="mPrev"){state.month=shiftMonth(state.month,-1);render()}
@@ -580,6 +621,7 @@ document.addEventListener("click",async e=>{
   else if(b.dataset.fscope){state.filter.scope=b.dataset.fscope;render()}
   else if(b.dataset.themeSet){const v=b.dataset.themeSet;pref("theme",v);if(v==="system")delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=v;render()}
   else if(b.dataset.debt){openDebt(b.dataset.debt)}
+  else if(b.dataset.catopen){const[ty,id]=b.dataset.catopen.split("|");openCategory(ty,id)}
   else if(b.dataset.acc){openAccount(b.dataset.acc)}
   else if(b.dataset.cattab){state.catTab=b.dataset.cattab;render()}
   else if(b.dataset.cathide||b.dataset.catshow){const id=b.dataset.cathide||b.dataset.catshow,ct=state.catTab;putSettings({cats:{...state.cats,[ct]:state.cats[ct].map(c=>c.id===id?{...c,hidden:!!b.dataset.cathide}:c)}}).then(()=>toast(b.dataset.cathide?"Category removed":"Category restored"),()=>toast("Couldn't save"))}
